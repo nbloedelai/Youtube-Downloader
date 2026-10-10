@@ -11,7 +11,7 @@
 > This independent project is not affiliated with, endorsed by, or sponsored by YouTube or Google. Use it only for media you created, own, or have permission to download.
 
 > [!IMPORTANT]
-> This is an experimental personal project. The current public build is ad hoc signed and has not been notarized by Apple. Test it carefully and expect Gatekeeper to require **Open Anyway** when the DMG is downloaded from the internet.
+> This is an experimental personal project. The repository is currently source-only while the downloadable release, dependency source packages, Developer ID signing, and Apple notarization are prepared.
 
 ## What it does
 
