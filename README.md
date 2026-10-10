@@ -5,7 +5,7 @@
 
   A native SwiftUI app for downloading videos you own or have permission to save, creating QuickTime-compatible files, and converting local videos without a trip to Terminal.
 
-  **Current release: 2.6.2 Beta · Apple silicon · macOS 26 or later**
+  **Current release: 2.6.3 Beta · Apple silicon · macOS 26 or later**
 </div>
 
 > This independent project is not affiliated with, endorsed by, or sponsored by YouTube or Google. Use it only for media you created, own, or have permission to download.
@@ -35,11 +35,11 @@ The DMG uses a compact Finder window with a branded orange and coral background.
 
 ## Installation
 
-1. Download `YouTube Downloader 2.6.2 Beta.dmg` from the latest GitHub prerelease.
+1. Download `YouTube Downloader 2.6.3 Beta.dmg` from the latest GitHub prerelease.
 2. Open the DMG.
 3. Drag **YouTube Downloader** onto **Applications**.
 4. Open the app from Applications.
-5. When the setup window appears, select **Install Tools**.
+5. When the setup popup appears, select **Install Tools**, then select **Restart App** when installation finishes.
 
 ### If macOS blocks the app
 
@@ -52,7 +52,7 @@ This beta is not Developer ID signed or notarized:
 
 ## One-time tool setup
 
-The 2.6.2 DMG does not contain yt-dlp, FFmpeg, or FFprobe. The app downloads them directly from the configured project sources during optional one-time setup, verifies their SHA-256 fingerprints, and stores them under `~/Library/Application Support/YouTube Downloader/Tools`. After setup, no Terminal commands are required.
+The 2.6.3 DMG does not contain yt-dlp, FFmpeg, or FFprobe. The app downloads them directly from the configured project sources during optional one-time setup, verifies their SHA-256 fingerprints, and stores them under `~/Library/Application Support/YouTube Downloader/Tools`. After installation, the popup requires a restart so every tool is loaded through a clean launch. No Terminal commands are required.
 
 ## Download modes
 
@@ -95,7 +95,6 @@ Updates:
 - Must match GitHub's published SHA-256 digest.
 - Are stored under `~/Library/Application Support/YouTube Downloader/Tools`.
 - Do not modify the signed application bundle.
-- Can be removed with **Restore Built-in** when an updated copy is installed.
 
 FFmpeg and FFprobe stay pinned to the tested versions shipped with the app.
 
@@ -136,7 +135,7 @@ Before publishing a binary release, complete every applicable item in [`PUBLIC_R
 
 ## Known limitations
 
-- The current 2.6.2 build supports Apple silicon and requires macOS 26 or later.
+- The current 2.6.3 build supports Apple silicon and requires macOS 26 or later.
 - The beta app and DMG are not Developer ID signed or notarized, so Gatekeeper may require manual approval.
 - Intel and older macOS work remains experimental and is maintained separately.
 - Website changes can temporarily break downloads until yt-dlp provides an update.
