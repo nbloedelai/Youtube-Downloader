@@ -5,13 +5,13 @@
 
   A native SwiftUI app for downloading videos you own or have permission to save, creating QuickTime-compatible files, and converting local videos without a trip to Terminal.
 
-  **Current release: 2.6.1 Beta · Apple silicon · macOS 26 or later**
+  **Current release: 2.6.2 Beta · Apple silicon · macOS 26 or later**
 </div>
 
 > This independent project is not affiliated with, endorsed by, or sponsored by YouTube or Google. Use it only for media you created, own, or have permission to download.
 
 > [!IMPORTANT]
-> This is an experimental personal project. The repository is currently source-only while the downloadable release, dependency source packages, Developer ID signing, and Apple notarization are prepared.
+> This is an experimental unsigned beta. It is ad hoc signed and has not been notarized by Apple, so macOS may require **Open Anyway** on first launch.
 
 ## What it does
 
@@ -20,7 +20,7 @@
 - Offers Fast, Balanced, and High Quality video conversion modes.
 - Converts existing videos to H.264 MP4, HEVC MP4, or ProRes MOV.
 - Shows download and conversion progress in the app.
-- Bundles yt-dlp, FFmpeg, and FFprobe, so users do not need Homebrew or Terminal setup.
+- Installs yt-dlp, FFmpeg, and FFprobe through a one-time in-app setup, so users do not need Homebrew or Terminal.
 - Checks the official yt-dlp GitHub release for updates from the Settings tab.
 - Verifies the SHA-256 digest published in GitHub release metadata before installing an yt-dlp update.
 - Follows the system light or dark appearance.
@@ -31,13 +31,28 @@
   <img src="Assets/installer-background-final.png" width="660" alt="Orange and coral DMG installer artwork">
 </div>
 
-The planned DMG uses a compact Finder window with a branded orange and coral background.
+The DMG uses a compact Finder window with a branded orange and coral background.
 
-## Download status
+## Installation
 
-The public repository is currently **source-only**. The downloadable DMG has been temporarily removed while its third-party source packages, Developer ID signing, and Apple notarization are prepared.
+1. Download `YouTube Downloader 2.6.2 Beta.dmg` from the latest GitHub prerelease.
+2. Open the DMG.
+3. Drag **YouTube Downloader** onto **Applications**.
+4. Open the app from Applications.
+5. When the setup window appears, select **Install Tools**.
 
-When a public build is ready, it will appear on the repository's **Releases** page with checksums and matching source archives. You do not need to download anything yet.
+### If macOS blocks the app
+
+This beta is not Developer ID signed or notarized:
+
+1. Try opening the app once.
+2. Open **System Settings → Privacy & Security**.
+3. Find the message about YouTube Downloader and select **Open Anyway**.
+4. Confirm the prompt, reopen the app, and select **Install Tools**.
+
+## One-time tool setup
+
+The 2.6.2 DMG does not contain yt-dlp, FFmpeg, or FFprobe. The app downloads them directly from the configured project sources during optional one-time setup, verifies their SHA-256 fingerprints, and stores them under `~/Library/Application Support/YouTube Downloader/Tools`. After setup, no Terminal commands are required.
 
 ## Download modes
 
@@ -86,7 +101,7 @@ FFmpeg and FFprobe stay pinned to the tested versions shipped with the app.
 
 ## Building from source
 
-The current build script targets Apple silicon and macOS 26:
+The current release script targets Apple silicon and macOS 26:
 
 ```zsh
 zsh Scripts/package-release.sh
@@ -94,13 +109,11 @@ zsh Scripts/package-release.sh
 
 The script:
 
-1. Downloads the pinned third-party executables.
-2. Verifies their SHA-256 checksums.
-3. Compiles the SwiftUI application.
-4. Bundles the tools and license notices.
-5. Applies an ad hoc code signature.
-6. Creates an app and ZIP in `dist/`.
-7. Creates a SHA-256 checksum file for the ZIP.
+1. Compiles the SwiftUI application.
+2. Bundles the icon and third-party notices, without bundling tool executables.
+3. Applies an ad hoc code signature for beta testing.
+4. Creates the app, ZIP, and branded DMG in `dist/`.
+5. Verifies the archives and creates SHA-256 checksums.
 
 The script automatically uses the macOS SDK installed with Xcode or the Xcode Command Line Tools. It does not require one hard-coded SDK folder.
 
@@ -110,21 +123,21 @@ The primary source file is [`Sources/YouTubeDownloader.swift`](Sources/YouTubeDo
 
 | Component | Version | Purpose |
 |---|---:|---|
-| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | 2026.08.19 | Media retrieval |
-| [FFmpeg](https://ffmpeg.org/) | 9.0.2 | Video and audio conversion |
-| FFprobe | 9.0.2 | Media inspection |
+| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Current verified release | Downloaded during setup |
+| [FFmpeg](https://ffmpeg.org/) | 9.0.2 | Downloaded during setup |
+| FFprobe | 9.0.2 | Downloaded during setup |
 
 See [`ThirdParty/THIRD_PARTY_NOTICES.md`](ThirdParty/THIRD_PARTY_NOTICES.md) and [`ThirdParty/Licenses`](ThirdParty/Licenses) for bundled license information.
 
-Before publishing a binary release, complete every applicable item in [`PUBLIC_RELEASE_CHECKLIST.md`](PUBLIC_RELEASE_CHECKLIST.md). The bundled executables require exact corresponding source and build materials to remain available with the binaries.
+Before publishing a binary release, complete every applicable item in [`PUBLIC_RELEASE_CHECKLIST.md`](PUBLIC_RELEASE_CHECKLIST.md). The downloadable app does not contain third-party tool executables; tools are obtained separately during setup and retain their own licenses.
 
-> [!CAUTION]
-> The bundled yt-dlp executable and current FFmpeg build include GPL-covered software. Before publishing binary releases, confirm that the repository and release process satisfy all corresponding-source, notice, and redistribution requirements. This README does not grant rights beyond the licenses of the project and its dependencies.
+> [!NOTE]
+> The app does not redistribute the tool executables in its DMG. Tools downloaded during setup retain their respective licenses. This repository includes notices and links to their projects.
 
 ## Known limitations
 
-- The current 2.6.1 build supports Apple silicon and requires macOS 26 or later.
-- The app and DMG are not Developer ID signed or notarized.
+- The current 2.6.2 build supports Apple silicon and requires macOS 26 or later.
+- The beta app and DMG are not Developer ID signed or notarized, so Gatekeeper may require manual approval.
 - Intel and older macOS work remains experimental and is maintained separately.
 - Website changes can temporarily break downloads until yt-dlp provides an update.
 - Download and conversion speed depends on the source, network, selected quality, and Mac hardware.
