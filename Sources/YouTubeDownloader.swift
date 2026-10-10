@@ -26,6 +26,12 @@ final class DownloadModel: ObservableObject {
     @Published var isCheckingForUpdates = false
     @Published var updateStatus = "Ready to check for yt-dlp updates."
     @Published var latestYTDLPVersion: String?
+    @Published var toolsReady = false
+    @Published var isInstallingTools = false
+    @Published var toolInstallStatus = "Required tools are not installed."
+    @Published var toolInstallProgress: Double = 0
+    @Published var showToolSetup = false
+    @Published var restartRequired = false
 
     private var process: Process?
     private var partialLine = ""
@@ -34,7 +40,6 @@ final class DownloadModel: ObservableObject {
     private var duration: Double = 0
     private var cancelled = false
     private var filesBeforeDownload: Set<String>?
-    private let bundledYTDLPVersion = "2026.08.19"
     private let managedVersionKey = "managedYTDLPVersion"
     private let lastUpdateCheckKey = "lastYTDLPUpdateCheck"
 
@@ -44,6 +49,9 @@ final class DownloadModel: ObservableObject {
         } else {
             autoUpdateYTDLP = UserDefaults.standard.bool(forKey: "autoUpdateYTDLP")
         }
+        toolsReady = requiredToolsAreInstalled
+        showToolSetup = !toolsReady
+        if toolsReady { toolInstallStatus = "Required tools are installed and ready." }
     }
 
     var activeYTDLPVersion: String {
@@ -51,14 +59,14 @@ final class DownloadModel: ObservableObject {
            let managed = UserDefaults.standard.string(forKey: managedVersionKey) {
             return managed + " (updated)"
         }
-        return bundledYTDLPVersion + " (built in)"
+        return "Not installed"
     }
 
     var managedYTDLPFolder: String { managedToolsDirectory.path }
     var hasManagedYTDLP: Bool { FileManager.default.isExecutableFile(atPath: managedYTDLPURL.path) }
 
     func checkAutomaticallyIfNeeded() {
-        guard autoUpdateYTDLP else { return }
+        guard autoUpdateYTDLP, hasManagedYTDLP else { return }
         if let last = UserDefaults.standard.object(forKey: lastUpdateCheckKey) as? Date,
            Date().timeIntervalSince(last) < 6 * 60 * 60 { return }
         checkForYTDLPUpdates()
@@ -74,7 +82,7 @@ final class DownloadModel: ObservableObject {
             do {
                 var request = URLRequest(url: URL(string: "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest")!)
                 request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-                request.setValue("YouTubeDownloader/2.6.1", forHTTPHeaderField: "User-Agent")
+                request.setValue("YouTubeDownloader/2.6.4", forHTTPHeaderField: "User-Agent")
                 let (releaseData, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                     throw UpdateError.message("GitHub returned an unexpected response.")
@@ -82,7 +90,7 @@ final class DownloadModel: ObservableObject {
                 let release = try JSONDecoder().decode(GitHubRelease.self, from: releaseData)
                 latestYTDLPVersion = release.tagName
 
-                let installed = UserDefaults.standard.string(forKey: managedVersionKey) ?? bundledYTDLPVersion
+        let installed = UserDefaults.standard.string(forKey: managedVersionKey) ?? "0"
                 guard Self.isNewerVersion(release.tagName, than: installed) else {
                     updateStatus = "yt-dlp \(installed) is up to date."
                     isCheckingForUpdates = false
@@ -127,20 +135,6 @@ final class DownloadModel: ObservableObject {
         }
     }
 
-    func restoreBundledYTDLP() {
-        guard !isDownloading && !isCheckingForUpdates else { return }
-        do {
-            if FileManager.default.fileExists(atPath: managedYTDLPURL.path) {
-                try FileManager.default.removeItem(at: managedYTDLPURL)
-            }
-            UserDefaults.standard.removeObject(forKey: managedVersionKey)
-            latestYTDLPVersion = nil
-            updateStatus = "Restored built-in yt-dlp \(bundledYTDLPVersion)."
-        } catch {
-            updateStatus = "Could not restore the built-in version: \(error.localizedDescription)"
-        }
-    }
-
     func showManagedToolsFolder() {
         try? FileManager.default.createDirectory(at: managedToolsDirectory, withIntermediateDirectories: true)
         NSWorkspace.shared.activateFileViewerSelecting([managedToolsDirectory])
@@ -153,6 +147,166 @@ final class DownloadModel: ObservableObject {
     }
 
     private var managedYTDLPURL: URL { managedToolsDirectory.appendingPathComponent("yt-dlp") }
+    private var managedFFmpegURL: URL { managedToolsDirectory.appendingPathComponent("ffmpeg") }
+    private var managedFFprobeURL: URL { managedToolsDirectory.appendingPathComponent("ffprobe") }
+    private var requiredToolsAreInstalled: Bool {
+        [managedYTDLPURL, managedFFmpegURL, managedFFprobeURL].allSatisfy {
+            FileManager.default.isExecutableFile(atPath: $0.path)
+        }
+    }
+
+    func installRequiredTools() {
+        guard !isInstallingTools && !isDownloading else { return }
+        isInstallingTools = true
+        restartRequired = false
+        toolInstallProgress = 0.03
+        toolInstallStatus = "Contacting the official yt-dlp release…"
+
+        Task {
+            do {
+                var request = URLRequest(url: URL(string: "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest")!)
+                request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+                request.setValue("YouTubeDownloader/2.6.4", forHTTPHeaderField: "User-Agent")
+                let (releaseData, releaseResponse) = try await URLSession.shared.data(for: request)
+                guard let releaseHTTP = releaseResponse as? HTTPURLResponse, releaseHTTP.statusCode == 200 else {
+                    throw UpdateError.message("GitHub returned an unexpected response.")
+                }
+                let release = try JSONDecoder().decode(GitHubRelease.self, from: releaseData)
+                guard let asset = release.assets.first(where: { $0.name == "yt-dlp_macos" }),
+                      let ytDigest = asset.digest?.replacingOccurrences(of: "sha256:", with: ""),
+                      ytDigest.count == 64 else {
+                    throw UpdateError.message("The current yt-dlp release has no verifiable macOS download.")
+                }
+
+                try FileManager.default.createDirectory(at: managedToolsDirectory, withIntermediateDirectories: true)
+                toolInstallStatus = "Downloading yt-dlp…"
+                let ytFile = try await Self.downloadVerified(asset.downloadURL, expectedSHA256: ytDigest)
+                toolInstallProgress = 0.28
+
+                toolInstallStatus = "Downloading FFmpeg…"
+                let ffmpegArchive = try await Self.downloadVerified(
+                    URL(string: "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip")!,
+                    expectedSHA256: "c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924")
+                toolInstallProgress = 0.56
+
+                toolInstallStatus = "Downloading FFprobe…"
+                let ffprobeArchive = try await Self.downloadVerified(
+                    URL(string: "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffprobe.zip")!,
+                    expectedSHA256: "fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6")
+                toolInstallProgress = 0.78
+
+                toolInstallStatus = "Installing verified tools…"
+                try await Self.installDownloadedTools(ytDLP: ytFile, ffmpegArchive: ffmpegArchive,
+                                                      ffprobeArchive: ffprobeArchive, into: managedToolsDirectory)
+                UserDefaults.standard.set(release.tagName, forKey: managedVersionKey)
+                latestYTDLPVersion = release.tagName
+                toolsReady = requiredToolsAreInstalled
+                guard toolsReady else { throw UpdateError.message("The tools did not finish installing correctly.") }
+                toolInstallProgress = 1
+                toolInstallStatus = "Setup complete. Restart the app to finish applying the tools."
+                updateStatus = "yt-dlp \(release.tagName) is installed."
+                restartRequired = true
+            } catch {
+                toolsReady = requiredToolsAreInstalled
+                toolInstallStatus = "Setup failed: \(error.localizedDescription)"
+                toolInstallProgress = 0
+            }
+            isInstallingTools = false
+        }
+    }
+
+    func restartApp() {
+        guard restartRequired, !isInstallingTools else { return }
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = [
+            "-c",
+            "while /bin/kill -0 \"$1\" 2>/dev/null; do /bin/sleep 0.1; done; /usr/bin/open \"$2\"",
+            "restart",
+            String(currentPID),
+            Bundle.main.bundleURL.path
+        ]
+        task.standardInput = FileHandle.nullDevice
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        do {
+            try task.run()
+            NSApp.terminate(nil)
+        } catch {
+            toolInstallStatus = "Close and reopen the app to finish setup."
+        }
+    }
+
+    private nonisolated static func downloadVerified(_ url: URL, expectedSHA256: String) async throws -> URL {
+        let (temporary, response) = try await URLSession.shared.download(from: url)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw UpdateError.message("A required download failed.")
+        }
+        let data = try Data(contentsOf: temporary, options: .mappedIfSafe)
+        let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        guard actual == expectedSHA256.lowercased() else {
+            throw UpdateError.message("A required tool failed its SHA-256 security check.")
+        }
+        let retained = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.copyItem(at: temporary, to: retained)
+        return retained
+    }
+
+    private nonisolated static func installDownloadedTools(ytDLP: URL, ffmpegArchive: URL,
+                                                            ffprobeArchive: URL, into destination: URL) async throws {
+        try await Task.detached {
+            let fm = FileManager.default
+            let staging = fm.temporaryDirectory.appendingPathComponent("YouTubeDownloaderTools-\(UUID().uuidString)", isDirectory: true)
+            defer {
+                try? fm.removeItem(at: staging)
+                try? fm.removeItem(at: ytDLP)
+                try? fm.removeItem(at: ffmpegArchive)
+                try? fm.removeItem(at: ffprobeArchive)
+            }
+            try fm.createDirectory(at: staging, withIntermediateDirectories: true)
+
+            func extract(_ archive: URL, to folder: URL) throws {
+                try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+                process.arguments = ["-x", "-k", archive.path, folder.path]
+                process.standardOutput = FileHandle.nullDevice
+                process.standardError = FileHandle.nullDevice
+                try process.run()
+                process.waitUntilExit()
+                guard process.terminationStatus == 0 else { throw UpdateError.message("A verified tool archive could not be opened.") }
+            }
+
+            let ffmpegFolder = staging.appendingPathComponent("ffmpeg", isDirectory: true)
+            let ffprobeFolder = staging.appendingPathComponent("ffprobe", isDirectory: true)
+            try extract(ffmpegArchive, to: ffmpegFolder)
+            try extract(ffprobeArchive, to: ffprobeFolder)
+
+            func locate(_ name: String, beneath folder: URL) throws -> URL {
+                guard let enumerator = fm.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey]),
+                      let found = enumerator.compactMap({ $0 as? URL }).first(where: { $0.lastPathComponent == name }) else {
+                    throw UpdateError.message("The \(name) executable was missing from its verified archive.")
+                }
+                return found
+            }
+
+            let candidates = [(ytDLP, "yt-dlp"), (try locate("ffmpeg", beneath: ffmpegFolder), "ffmpeg"),
+                              (try locate("ffprobe", beneath: ffprobeFolder), "ffprobe")]
+            try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+            for (source, name) in candidates {
+                let target = destination.appendingPathComponent(name)
+                let pending = destination.appendingPathComponent(".\(name).installing")
+                try? fm.removeItem(at: pending)
+                try fm.copyItem(at: source, to: pending)
+                guard chmod(pending.path, S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) == 0 else {
+                    throw UpdateError.message("The \(name) tool could not be made executable.")
+                }
+                if fm.fileExists(atPath: target.path) { _ = try fm.replaceItemAt(target, withItemAt: pending) }
+                else { try fm.moveItem(at: pending, to: target) }
+            }
+        }.value
+    }
 
     private struct GitHubRelease: Decodable {
         let tagName: String
@@ -210,7 +364,8 @@ final class DownloadModel: ObservableObject {
             return
         }
         guard executable("ffmpeg") != nil, executable("ffprobe") != nil else {
-            status = "The app’s built-in media tools are missing. Reinstall the app."
+            status = "Install the required tools from Settings first."
+            showToolSetup = true
             return
         }
         log = ""
@@ -230,11 +385,13 @@ final class DownloadModel: ObservableObject {
             return
         }
         guard let downloader = executable("yt-dlp") else {
-            status = "The app’s built-in downloader is missing. Reinstall the app."
+            status = "Install the required tools from Settings first."
+            showToolSetup = true
             return
         }
         guard let ffmpeg = executable("ffmpeg"), executable("ffprobe") != nil else {
-            status = "The app’s built-in media tools are missing. Reinstall the app."
+            status = "Install the required tools from Settings first."
+            showToolSetup = true
             return
         }
 
@@ -411,7 +568,8 @@ final class DownloadModel: ObservableObject {
         guard let ffmpeg = executable("ffmpeg"), let ffprobe = executable("ffprobe") else {
             isDownloading = false
             phase = "Error"
-            status = "The app’s built-in media tools are missing. Reinstall the app."
+            status = "Install the required tools from Settings first."
+            showToolSetup = true
             return
         }
         isDownloading = true
@@ -560,8 +718,9 @@ final class DownloadModel: ObservableObject {
     }
 
     private func executable(_ name: String) -> URL? {
-        if name == "yt-dlp", FileManager.default.isExecutableFile(atPath: managedYTDLPURL.path) {
-            return managedYTDLPURL
+        let managed = managedToolsDirectory.appendingPathComponent(name)
+        if FileManager.default.isExecutableFile(atPath: managed.path) {
+            return managed
         }
         if let resourceURL = Bundle.main.resourceURL {
             let bundled = resourceURL.appendingPathComponent("Tools", isDirectory: true).appendingPathComponent(name)
@@ -589,7 +748,7 @@ struct ContentView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @StateObject private var model = DownloadModel()
-    private let releaseVersion = "2.6.1"
+    private let releaseVersion = "2.6.4"
     private let isBetaRelease = true
     private let navy = Color(red: 0.09, green: 0.18, blue: 0.29)
     private var primaryText: Color { colorScheme == .dark ? .white : navy }
@@ -643,6 +802,50 @@ struct ContentView: View {
             }
         }
         .task { model.checkAutomaticallyIfNeeded() }
+        .sheet(isPresented: $model.showToolSetup) { toolSetupSheet }
+    }
+
+    private var toolSetupSheet: some View {
+        VStack(spacing: 18) {
+            ZStack {
+                Circle().fill(accent.opacity(0.14))
+                Image(systemName: model.toolsReady ? "checkmark.seal.fill" : "shippingbox.and.arrow.backward.fill")
+                    .font(.system(size: 30, weight: .semibold)).foregroundStyle(accent)
+            }
+            .frame(width: 68, height: 68)
+            Text(model.toolsReady ? "Tools are ready" : "One-time setup")
+                .font(.system(size: 24, weight: .bold, design: .rounded)).foregroundStyle(primaryText)
+            Text("Install yt-dlp, FFmpeg, and FFprobe to download and convert media. The app downloads them directly from the configured project sources and checks their SHA-256 fingerprints before installation.")
+                .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+            if model.isInstallingTools || model.toolInstallProgress > 0 {
+                ProgressView(value: model.toolInstallProgress).tint(accent).frame(maxWidth: 390)
+            }
+            Text(model.toolInstallStatus)
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(primaryText.opacity(0.78))
+                .multilineTextAlignment(.center).frame(maxWidth: 420)
+            HStack(spacing: 10) {
+                if model.restartRequired {
+                    Button { model.restartApp() } label: {
+                        Label("Restart App", systemImage: "arrow.clockwise.circle.fill").frame(minWidth: 170)
+                    }
+                    .buttonStyle(.glassProminent)
+                } else {
+                    if !model.isInstallingTools {
+                        Button("Later") { model.showToolSetup = false }.buttonStyle(.glass)
+                    }
+                    Button { model.installRequiredTools() } label: {
+                        Label(model.isInstallingTools ? "Installing…" : "Install Tools", systemImage: "arrow.down.circle.fill")
+                            .frame(minWidth: 170)
+                    }
+                    .buttonStyle(.glassProminent).disabled(model.isInstallingTools)
+                }
+            }
+            Text("An internet connection is required for setup. The tools are stored in your user Library, outside the app.")
+                .font(.system(size: 10)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+        .padding(30).frame(width: 520)
+        .interactiveDismissDisabled(model.isInstallingTools || model.restartRequired)
     }
 
     private var header: some View {
@@ -784,13 +987,13 @@ struct ContentView: View {
                                 .font(.system(size: 15, weight: .bold)).foregroundStyle(accent)
                         }.frame(width: 34, height: 34)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("yt-dlp Updater").font(.system(size: 16, weight: .bold, design: .rounded)).foregroundStyle(primaryText)
-                            Text("Keep the download engine current").font(.system(size: 11)).foregroundStyle(.secondary)
+                            Text("Required Tools").font(.system(size: 16, weight: .bold, design: .rounded)).foregroundStyle(primaryText)
+                            Text("Install and maintain the download engine").font(.system(size: 11)).foregroundStyle(.secondary)
                         }
                         Spacer()
                         if model.isCheckingForUpdates { ProgressView().controlSize(.small) }
                         else {
-                            Label("Current", systemImage: "checkmark.circle.fill")
+                            Label(model.toolsReady ? "Ready" : "Setup needed", systemImage: model.toolsReady ? "checkmark.circle.fill" : "arrow.down.circle.fill")
                                 .font(.system(size: 10, weight: .semibold)).foregroundStyle(accent)
                                 .padding(.horizontal, 9).padding(.vertical, 5)
                                 .background(accent.opacity(0.11), in: Capsule())
@@ -829,11 +1032,7 @@ struct ContentView: View {
                             Label("Check Now", systemImage: "arrow.clockwise")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.glassProminent).disabled(model.isCheckingForUpdates || model.isDownloading)
-                        if model.hasManagedYTDLP {
-                            Button("Restore Built-in") { model.restoreBundledYTDLP() }
-                                .buttonStyle(.glass).disabled(model.isCheckingForUpdates || model.isDownloading)
-                        }
+                        .buttonStyle(.glassProminent).disabled(model.isCheckingForUpdates || model.isDownloading || !model.toolsReady)
                     }
                 }
             }
@@ -843,7 +1042,7 @@ struct ContentView: View {
                     label("SECURITY & STORAGE", icon: "checkmark.shield.fill")
                     settingsRow("Official source", detail: "yt-dlp_macos from GitHub", icon: "network")
                     settingsRow("Verified download", detail: "SHA-256 checked before install", icon: "checkmark.seal.fill")
-                    settingsRow("Safe storage", detail: "The signed app stays unchanged", icon: "folder.badge.gearshape")
+                    settingsRow("Safe storage", detail: "Tools install outside the app", icon: "folder.badge.gearshape")
                     Divider().opacity(0.35)
                     HStack(spacing: 9) {
                         Image(systemName: "folder.fill").foregroundStyle(accent).frame(width: 22)
@@ -860,7 +1059,7 @@ struct ContentView: View {
                 Image(systemName: "wrench.and.screwdriver.fill").foregroundStyle(accent).frame(width: 26)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Media tools stay pinned").font(.system(size: 12, weight: .semibold)).foregroundStyle(primaryText)
-                    Text("FFmpeg and FFprobe use the tested versions included with this app.")
+                    Text("FFmpeg and FFprobe install from fixed, checksum-verified downloads.")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                 }
                 Spacer()

@@ -1,6 +1,6 @@
 # Public release checklist
 
-This checklist applies to version 2.6.3 and later while the public DMG does not contain yt-dlp, FFmpeg, or FFprobe executables.
+This checklist applies to version 2.6.4 and later while the public DMG does not contain yt-dlp, FFmpeg, or FFprobe executables.
 
 - Build from a clean checkout using `Scripts/package-release.sh`.
 - Confirm `Contents/Resources` contains notices and artwork but no `Tools` directory or third-party executables.
