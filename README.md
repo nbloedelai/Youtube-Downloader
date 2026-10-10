@@ -31,25 +31,13 @@
   <img src="Assets/installer-background-final.png" width="660" alt="Orange and coral DMG installer artwork">
 </div>
 
-The DMG uses a compact Finder window with a branded orange and coral background. Drag **YouTube Downloader** onto the **Applications** folder to install it.
+The planned DMG uses a compact Finder window with a branded orange and coral background.
 
-## Installation
+## Download status
 
-1. Download `YouTube Downloader 2.6.1 Beta.dmg` from the latest GitHub release.
-2. Open the DMG.
-3. Drag **YouTube Downloader** onto **Applications**.
-4. Open the app from Applications.
+The public repository is currently **source-only**. The downloadable DMG has been temporarily removed while its third-party source packages, Developer ID signing, and Apple notarization are prepared.
 
-### Gatekeeper
-
-This beta is ad hoc signed. A copy downloaded from the internet may be blocked on its first launch:
-
-1. Try opening the app once.
-2. Open **System Settings → Privacy & Security**.
-3. Find the message about YouTube Downloader and select **Open Anyway**.
-4. Confirm the prompt.
-
-A future distribution build should use a Developer ID certificate and Apple notarization.
+When a public build is ready, it will appear on the repository's **Releases** page with checksums and matching source archives. You do not need to download anything yet.
 
 ## Download modes
 
@@ -111,14 +99,10 @@ The script:
 3. Compiles the SwiftUI application.
 4. Bundles the tools and license notices.
 5. Applies an ad hoc code signature.
-6. Creates the ZIP and branded DMG in `outputs/`.
-7. Verifies both archives.
+6. Creates an app and ZIP in `dist/`.
+7. Creates a SHA-256 checksum file for the ZIP.
 
-The script currently expects the macOS 26.5 Command Line Tools SDK at:
-
-```text
-/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk
-```
+The script automatically uses the macOS SDK installed with Xcode or the Xcode Command Line Tools. It does not require one hard-coded SDK folder.
 
 The primary source file is [`Sources/YouTubeDownloader.swift`](Sources/YouTubeDownloader.swift).
 
