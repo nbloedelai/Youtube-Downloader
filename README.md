@@ -1,2 +1,2 @@
 # Youtube-Downloader
-Youtube Downloader App built around yt-delp 
+Youtube Downloader App built around yt-dlp
